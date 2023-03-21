@@ -1,7 +1,9 @@
 import logging
+
+from telegram import ReplyKeyboardMarkup
 from telegram.ext import Application, MessageHandler, CommandHandler, filters
 
-from data import BOT_TOKEN
+from data import BOT_TOKEN, COMPANY_NAME
 
 
 logging.basicConfig(
@@ -11,12 +13,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+kb_syms = [['/start']]
+kb = ReplyKeyboardMarkup(kb_syms, one_time_keyboard=True)
+
+
 async def misunderstanding(update, context):
-    await update.message.reply_text('Что-то я не разобрался... Напишите "/start" для начала работы.')
+    await update.message.reply_text('Что-то я не разобрался... Напишите "/start" для начала работы.', reply_markup=kb)
 
 
 async def begining(update, context):
-    await update.message.reply_html("Текст", parse_mode='HTML')
+    await update.message.reply_html(f"""\tЗдравствуйте! Я - бот для записи на прием в компании {COMPANY_NAME}
+    Выберите один из вариантов, предоставленных ниже.""")
 
 
 def main():
