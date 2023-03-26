@@ -21,7 +21,7 @@ for i in range(1, len(DOCTORS) + 1):
         doctors_lst.append([DOCTORS[i - 1]])
     else:
         doctors_lst[-1].append(DOCTORS[i - 1])
-doctors_lst[-1].append('/cancel') if len(doctors_lst[-1]) == 1 else doctors_lst.append(['/cancel'])
+doctors_lst.append(['/cancel'])
 dctr = ReplyKeyboardMarkup(doctors_lst, one_time_keyboard=True, resize_keyboard=True)
 
 
