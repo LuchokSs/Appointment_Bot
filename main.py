@@ -3,7 +3,7 @@ import logging
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ConversationHandler
 
-from data import BOT_TOKEN, COMPANY_NAME, DOCTORS, POLYCLINICS, TIME, DAY
+from data import BOT_TOKEN, COMPANY_NAME, DOCTORS, POLYCLINICS, TIME, DAY, TYPES
 
 
 logging.basicConfig(
@@ -28,7 +28,7 @@ def make_kb_list(values):
     return values_lst
 
 
-plclnc = ReplyKeyboardMarkup(make_kb_list(POLYCLINICS), one_time_keyboard=True, resize_keyboard=True)
+tps = ReplyKeyboardMarkup(make_kb_list(TYPES), one_time_keyboard=True, resize_keyboard=True)
 
 
 async def misunderstanding(update, context):
@@ -37,12 +37,30 @@ async def misunderstanding(update, context):
 
 async def begining(update, context):
     await update.message.reply_html(f"""\tЗдравствуйте! Я - бот для записи на прием в компании {COMPANY_NAME}
-    \nВыберите нужную вам поликлинику.""", reply_markup=plclnc)
-    return 1
+    \nВыберите нужого вам врача.""", reply_markup=tps)
+    return 0
 
 
 async def cancellation(update, context):
     await update.message.reply_text('До скорой встречи! \nНапишите "/start" для возобновления работы.', reply_markup=kb)
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+async def choose_polyclinic(update, context):
+    type = update.message.text
+    if type in TYPES:
+
+        context.user_data['type'] = type
+        plclnc = ReplyKeyboardMarkup(make_kb_list(POLYCLINICS), one_time_keyboard=True, resize_keyboard=True)
+
+        await update.message.reply_text(
+            f"В какой поликлинике вам нужен {context.user_data['type'].lower()}?", reply_markup=plclnc)
+        return 1
+    else:
+        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
+                                        reply_markup=tps)
+        return 0
 
 
 async def choose_doctor(update, context):
@@ -53,13 +71,13 @@ async def choose_doctor(update, context):
         dctr = ReplyKeyboardMarkup(make_kb_list(DOCTORS[polyclinic]), one_time_keyboard=True, resize_keyboard=True)
 
         await update.message.reply_text(
-            f"Какой врач вам нужен в поликлинике №{polyclinic}?", reply_markup=dctr)
+            f"Какой {context.user_data['type'].lower()} вам нужен в поликлинике №{polyclinic}?", reply_markup=dctr)
         return 2
     else:
-        context.user_data.clear()
-        await update.message.reply_text('Что-то я не разобрался... \nНапишите "/start" для начала работы.',
-                                        reply_markup=kb)
-        return ConversationHandler.END
+        plclnc = ReplyKeyboardMarkup(make_kb_list(POLYCLINICS), one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
+                                        reply_markup=plclnc)
+        return 1
 
 
 async def choose_day(update, context):
@@ -68,13 +86,14 @@ async def choose_day(update, context):
         context.user_data['doctor'] = doctor
         days = ReplyKeyboardMarkup(make_kb_list(DAY), one_time_keyboard=True, resize_keyboard=True)
         await update.message.reply_text(
-            f"На какой день вы хотите записаться к {context.user_data['doctor']}?", reply_markup=days)
+            f"На какой день вы хотите записаться к {context.user_data['type'].lower()} {context.user_data['doctor']}?",
+            reply_markup=days)
         return 3
     else:
-        context.user_data.clear()
-        await update.message.reply_text('Что-то я не разобрался... \nНапишите "/start" для начала работы.',
-                                        reply_markup=kb)
-        return ConversationHandler.END
+        dctr = ReplyKeyboardMarkup(make_kb_list(DOCTORS[context.user_data['polyclinic']]), one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
+                                        reply_markup=dctr)
+        return 2
 
 
 async def choose_time(update, context):
@@ -83,14 +102,14 @@ async def choose_time(update, context):
         context.user_data['day'] = day
         times = ReplyKeyboardMarkup(make_kb_list(TIME), one_time_keyboard=True, resize_keyboard=True)
         await update.message.reply_text(
-            f"На какое время вы хотите записаться к {context.user_data['doctor']} "
+            f"На какое время вы хотите записаться к {context.user_data['type'].lower()} {context.user_data['doctor']} "
             f"{context.user_data['day']}?", reply_markup=times)
         return 4
     else:
-        context.user_data.clear()
-        await update.message.reply_text('Что-то я не разобрался... \nНапишите "/start" для начала работы.',
-                                        reply_markup=kb)
-        return ConversationHandler.END
+        days = ReplyKeyboardMarkup(make_kb_list(DAY), one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
+                                        reply_markup=days)
+        return 3
 
 
 async def end_of_dialog(update, context):
@@ -98,14 +117,15 @@ async def end_of_dialog(update, context):
     if time in TIME:
         context.user_data['time'] = time
         await update.message.reply_text(
-            f"Вы записаны в {context.user_data['polyclinic']} поликлинику к {context.user_data['doctor']} на "
+            f"Вы записаны в {context.user_data['polyclinic']} поликлинику к {context.user_data['type'].lower()} "
+            f"{context.user_data['doctor']} на "
             f"{context.user_data['day']} в {context.user_data['time']}. Не опаздывайте, хорошего дня!")
         return ConversationHandler.END
     else:
-        context.user_data.clear()
-        await update.message.reply_text('Что-то я не разобрался... \nНапишите "/start" для начала работы.',
-                                        reply_markup=kb)
-        return ConversationHandler.END
+        times = ReplyKeyboardMarkup(make_kb_list(TIME), one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
+                                        reply_markup=times)
+        return 4
 
 
 def main():
@@ -116,6 +136,7 @@ def main():
         entry_points=[CommandHandler('start', begining)],
 
         states={
+            0: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_polyclinic)],
             1: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_doctor)],
             2: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_day)],
             3: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_time)],
