@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 kb_syms = [['/start']]
-kb = ReplyKeyboardMarkup(kb_syms, one_time_keyboard=True)
+kb = ReplyKeyboardMarkup(kb_syms, one_time_keyboard=True, resize_keyboard=True)
 doctors_lst = []
 for i in range(1, len(DOCTORS) + 1):
     if i % 2 != 0:
@@ -22,7 +22,7 @@ for i in range(1, len(DOCTORS) + 1):
     else:
         doctors_lst[-1].append(DOCTORS[i - 1])
 doctors_lst[-1].append('/cancel') if len(doctors_lst[-1]) == 1 else doctors_lst.append(['/cancel'])
-dctr = ReplyKeyboardMarkup(doctors_lst, one_time_keyboard=True)
+dctr = ReplyKeyboardMarkup(doctors_lst, one_time_keyboard=True, resize_keyboard=True)
 
 
 async def misunderstanding(update, context):
