@@ -71,7 +71,7 @@ async def choose_doctor(update, context):
         dctr = ReplyKeyboardMarkup(make_kb_list(DOCTORS[polyclinic]), one_time_keyboard=True, resize_keyboard=True)
 
         await update.message.reply_text(
-            f"Какой {context.user_data['type'].lower()} вам нужен в поликлинике №{polyclinic}?", reply_markup=dctr)
+            f"Выбирите врача специальности {context.user_data['type'].lower()} в поликлинике {polyclinic}.", reply_markup=dctr)
         return 2
     else:
         plclnc = ReplyKeyboardMarkup(make_kb_list(POLYCLINICS), one_time_keyboard=True, resize_keyboard=True)
@@ -132,14 +132,14 @@ async def take_name(update, context):
 async def take_age(update, context):
     name = update.message.text
     context.user_data['name'] = name
-    await update.message.reply_text(f'Теперь на нужно узнать ваш возраст, {name}. \nВ формате: ДД.ММ.ГГГГ')
+    await update.message.reply_text(f'Пожалуйста, укажите дату рождения в формате ДД.ММ.ГГГГ, {name}. \nВ формате: ДД.ММ.ГГГГ')
     return 6
 
 
 async def take_phone_number(update, context):
     age = update.message.text
     context.user_data['age'] = age
-    await update.message.reply_text(f'Укажите пожалуйста ваш номер телефона, {context.user_data["name"]}')
+    await update.message.reply_text(f'Пожалуйста, укажите ваш номер телефона, {context.user_data["name"]}')
     return 7
 
 
