@@ -112,20 +112,42 @@ async def choose_time(update, context):
         return 3
 
 
-async def end_of_dialog(update, context):
+async def take_name(update, context):
     time = update.message.text
     if time in TIME:
         context.user_data['time'] = time
         await update.message.reply_text(
-            f"Вы записаны в {context.user_data['polyclinic']} поликлинику к {context.user_data['type'].lower()} "
-            f"{context.user_data['doctor']} на "
-            f"{context.user_data['day']} в {context.user_data['time']}. Не опаздывайте, хорошего дня!")
-        return ConversationHandler.END
+            f"Для того, чтобы записаться в {context.user_data['polyclinic']} поликлинику к "
+            f"{context.user_data['type'].lower()} {context.user_data['doctor']} на "
+            f"{context.user_data['day']} в {context.user_data['time']} нам нужно узнать ваше ФИО в формате:"
+            f" \nФамилия Имя Отчество")
+        return 5
     else:
         times = ReplyKeyboardMarkup(make_kb_list(TIME), one_time_keyboard=True, resize_keyboard=True)
         await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
                                         reply_markup=times)
         return 4
+
+
+async def take_age(update, context):
+    name = update.message.text
+    context.user_data['name'] = name
+    await update.message.reply_text(f'Теперь на нужно узнать ваш возраст, {name}. \nВ формате: ДД.ММ.ГГГГ')
+    return 6
+
+
+async def take_phone_number(update, context):
+    age = update.message.text
+    context.user_data['age'] = age
+    await update.message.reply_text(f'Укажите пожалуйста ваш номер телефона, {context.user_data["name"]}')
+    return 7
+
+
+async def end_of_dialog(update, context):
+    phone_number = update.message.text
+    context.user_data['phone_number'] = phone_number
+    await update.message.reply_text(f'Вы записаны на {context.user_data["day"]}. Не опаздывайте, хорошего дня!')
+    return ConversationHandler.END
 
 
 def main():
@@ -140,7 +162,10 @@ def main():
             1: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_doctor)],
             2: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_day)],
             3: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_time)],
-            4: [MessageHandler(filters.TEXT & ~filters.COMMAND, end_of_dialog)]
+            4: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_name)],
+            5: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_age)],
+            6: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_phone_number)],
+            7: [MessageHandler(filters.TEXT & ~filters.COMMAND, end_of_dialog)]
         },
 
         fallbacks=[CommandHandler('cancel', cancellation)]
