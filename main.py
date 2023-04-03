@@ -32,7 +32,11 @@ tps = ReplyKeyboardMarkup(make_kb_list(TYPES), one_time_keyboard=True, resize_ke
 
 
 async def misunderstanding(update, context):
-    await update.message.reply_text('Что-то я не разобрался... \nНапишите "/start" для начала работы.', reply_markup=kb)
+    answer = update.message.text
+    if answer.lower() == 'спасибо' or list(answer.lower())[:-1] == list('спасибо'):
+        await update.message.reply_text('Всегда пожалуйста!', reply_markup=kb)
+    else:
+        await update.message.reply_text('Что-то я не разобрался... \nНапишите "/start" для начала работы.', reply_markup=kb)
 
 
 async def begining(update, context):
@@ -143,11 +147,35 @@ async def take_phone_number(update, context):
     return 7
 
 
+async def check_data(update, context):
+    phone = update.message.text
+    context.user_data['phone'] = phone
+    choice = ReplyKeyboardMarkup(make_kb_list(['Всё верно!', 'Есть ошибки']), one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text(f'Спасибо за вашу запись, {context.user_data["name"]}. '
+                                    f'Теперь нам нужно проверить корректность введённых данных.')
+    await update.message.reply_text(
+            f"Вы записываетесь в {context.user_data['polyclinic']} поликлинику к "
+            f"{context.user_data['type'].lower()} {context.user_data['doctor']} на "
+            f"{context.user_data['day']} в {context.user_data['time']}.\n"
+            f"Ваш номер телефона: {context.user_data['phone']}\n"
+            f"Дата вашего рождения: {context.user_data['age']}")
+    await update.message.reply_text(f"Всё верно?", reply_markup=choice)
+    return 8
+
+
 async def end_of_dialog(update, context):
-    phone_number = update.message.text
-    context.user_data['phone_number'] = phone_number
-    await update.message.reply_text(f'Вы записаны на {context.user_data["day"]}. Не опаздывайте, хорошего дня!')
-    return ConversationHandler.END
+    answer = update.message.text
+    if answer == 'Всё верно!':
+        await update.message.reply_text(f'Вы записаны на {context.user_data["day"]}. Не опаздывайте, хорошего дня!')
+        return ConversationHandler.END
+    elif answer == 'Есть ошибки':
+        await update.message.reply_text(f'Пожалуйста, заполните вашу заявку заново.', reply_markup=kb)
+        return ConversationHandler.END
+    else:
+        choice = ReplyKeyboardMarkup(make_kb_list(['Всё верно!', 'Есть ошибки']), one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
+                                        reply_markup=choice)
+        return 8
 
 
 def main():
@@ -165,7 +193,8 @@ def main():
             4: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_name)],
             5: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_age)],
             6: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_phone_number)],
-            7: [MessageHandler(filters.TEXT & ~filters.COMMAND, end_of_dialog)]
+            7: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_data)],
+            8: [MessageHandler(filters.TEXT & ~filters.COMMAND, end_of_dialog)]
         },
 
         fallbacks=[CommandHandler('cancel', cancellation)]
