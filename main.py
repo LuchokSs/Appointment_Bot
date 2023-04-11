@@ -24,7 +24,7 @@ req = requests.get(f'{SERVER}/api/Web/allspec/{COMPANY_ID}').json()
 for i in req:
     TYPES[0].append(i['id'])
     TYPES[1].append(i['name'])
-types_kb = ReplyKeyboardMarkup(make_kb_list(TYPES[1]), one_time_keyboard=True, resize_keyboard=True)
+types_kb = ReplyKeyboardMarkup(make_kb_list(TYPES[1], back_button=False), one_time_keyboard=True, resize_keyboard=True)
 
 
 async def misunderstanding(update, context):

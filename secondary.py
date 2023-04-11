@@ -2,13 +2,18 @@ import requests
 from data import SERVER
 
 
-def make_kb_list(data):
+def make_kb_list(data, back_button=True, cancel_button=True):
     answer = []
     for i in range(len(data)):
         if i % 3 == 0:
             answer.append([])
         answer[-1].append(data[i])
-    answer.append(['/cancel', 'Назад'])
+    if cancel_button:
+        answer.append(['/cancel'])
+        if back_button:
+            answer[-1].append('Назад')
+    elif back_button:
+        answer.append(['Назад'])
     return answer
 
 
