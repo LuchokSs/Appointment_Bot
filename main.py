@@ -7,7 +7,7 @@ from telegram.ext import Application, MessageHandler, CommandHandler, filters, C
 from data import BOT_TOKEN
 from data import COMPANY_NAME, COMPANY_ID, DOCTORS, DAY, TYPES, TIME, POLYCLINICS, SERVER
 
-from secondary import reformat_date, make_cell_request, make_kb_list
+from secondary import reformat_date, make_cell_request, make_kb_list, make_record_request, request_token
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.DEBUG
@@ -19,6 +19,7 @@ deny_syms = [['/cancel', 'Назад']]
 kb = ReplyKeyboardMarkup(kb_syms, one_time_keyboard=True, resize_keyboard=True)
 deny_kb = ReplyKeyboardMarkup(deny_syms, one_time_keyboard=True, resize_keyboard=True)
 
+request_token()
 req = requests.get(f'{SERVER}/api/Web/allspec/{COMPANY_ID}').json()
 
 for i in req:
@@ -218,7 +219,7 @@ async def choose_time(update, context):  # 3
         return 3
 
 
-async def take_name(update, context):  # 4
+async def take_surname(update, context):  # 4
     time = update.message.text
 
     if update.message.text == 'Назад':
@@ -245,7 +246,7 @@ async def take_name(update, context):  # 4
         return 4
 
 
-async def take_surname(update, context):  # 5
+async def take_name(update, context):  # 5
     name = update.message.text
 
     if update.message.text == 'Назад':
@@ -293,8 +294,6 @@ async def take_age(update, context):  # 7
     if context.user_data.get('name') is not None and len(context.user_data.get('name')) == 2:
         context.user_data['name'].append(name)
 
-    context.user_data['name'] = ' '.join(context.user_data['name'])
-
     await update.message.reply_text(
         f'Пожалуйста, укажите дату рождения в формате ДД.ММ.ГГГГ', reply_markup=deny_kb)
     return 8
@@ -341,7 +340,7 @@ async def check_data(update, context):  # 9
             'time': context.user_data['time'][0],
             'phone': context.user_data['phone'],
             'age': context.user_data['age'],
-            'name': context.user_data['name']}
+            'name': ' '.join(context.user_data['name'])}
     await update.message.reply_text(
         f"Вы записываетесь в {data['polyclinic']} по специальности "
         f"{data['type'].lower()} к врачу {data['doctor']} на "
@@ -362,9 +361,15 @@ async def end_of_dialog(update, context):  # 10
         return 9
 
     if answer == 'Всё верно!':
-        await update.message.reply_text(f'Вы записаны на {context.user_data["day"]}. Не опаздывайте, хорошего дня!'
-                                        f'\nДля возобновления работы напишите /start или нажмите /start на клавиатуре.',
-                                        reply_markup=kb)
+        req = make_record_request(context)
+        if req:
+            await update.message.reply_text(f'Вы записаны на {context.user_data["day"]}. Не опаздывайте, хорошего дня!'
+                                            f'\nДля возобновления работы напишите /start или нажмите /start на клавиатуре.',
+                                            reply_markup=kb)
+        else:
+            await update.message.reply_text('Запись не удалась. Пожалуйста, повторите попытку позже.'
+                                            f'\nДля возобновления работы напишите /start или нажмите /start на клавиатуре.',
+                                            reply_markup=kb)
         return ConversationHandler.END
     elif answer == 'Есть ошибки':
         await update.message.reply_text(f'Пожалуйста, заполните вашу заявку заново.', reply_markup=kb)
@@ -389,8 +394,8 @@ def main():
             1: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_doctor)],
             2: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_day)],
             3: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_time)],
-            4: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_name)],
-            5: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_surname)],
+            4: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_surname)],
+            5: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_name)],
             6: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_lastname)],
             7: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_age)],
             8: [MessageHandler(filters.TEXT & ~filters.COMMAND, take_phone_number)],
