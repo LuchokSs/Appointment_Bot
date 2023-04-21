@@ -1,4 +1,6 @@
 import requests
+import telegram
+
 from data import SERVER, COMPANY_ID, ACCESS_TOKEN, PASSWORD, USER
 
 
@@ -20,9 +22,10 @@ def make_kb_list(data, back_button=True, cancel_button=True):
 def reformat_date(date):
     if '.' in date:
         date = date.split('.')
+        return f'{date[2]}-{date[1]}-{date[0]}'
     else:
         date = date.split('-')
-    return f'{date[2]}-{date[1]}-{date[0]}'
+        return f'{date[2]}.{date[1]}.{date[0]}'
 
 
 def make_cell_request(medorg_id,
@@ -39,17 +42,27 @@ def make_cell_request(medorg_id,
                 'date_start': date_start,
                 'date_end': date_end,
                 'reception_kind': 0}
-    req = requests.post(f'{SERVER}/api/Web/WorkerCells', data=req_dict).json()
-    req = req['workers'][0]['schedule'][0]['cells']
-    for i in req:
-        if i['free']:
-            result[0].append(i['time_start'])
-            result[1].append(i['time_end'])
+    req = requests.post(f'{SERVER}/api/Web/WorkerCells', data=req_dict)
+    if not check_request(req):
+        return False
+    req = req.json()
+    req = req['workers'][0]['schedule']
+    for g in req:
+        for i in g['cells']:
+            if i['free']:
+                result[0].append(i['time_start'])
+                result[1].append(i['time_end'])
     return result
 
 
+def check_request(request):
+    if request.status_code == 200:
+        return True
+    return False
+
+
 def request_token():
-    res = requests.post(url='https://patient.simplex48.ru/token',
+    res = requests.post(url=f'{SERVER}/token',
                         data=f'grant_type=password&username={USER}&password={PASSWORD}',
                         headers={'Content-type': 'application/x-www-form-urlencoded'}).json()
     global ACCESS_TOKEN
@@ -57,18 +70,25 @@ def request_token():
     return
 
 
-def intercept_request(request, data, deep=5):
+def authorized_request(request, data, request_type='post', deep=5, response_type='str'):
+    req = []
     if deep == 0:
-        return False, None
-    req = requests.post(request, data=data, headers={'Authorization': f'Bearer {ACCESS_TOKEN}'}).json()
-    if req == '-1':
-        request_token()
-        return intercept_request(request, data, deep=deep - 1)
+        return False
+    if request_type == 'post':
+        req = requests.post(request, data=data, headers={'Authorization': f'Bearer {ACCESS_TOKEN}'})
+    elif request_type == 'get':
+        req = requests.get(request, headers={'Authorization': f'Bearer {ACCESS_TOKEN}'})
+    if check_request(req) and req.content != -1 and req.content != 0:
+        if response_type == 'str':
+            return True, req.text
+        if response_type == 'json':
+            return True, req.json()
     else:
-        return True, req
+        request_token()
+        return authorized_request(request, data, deep=deep - 1)
 
 
-def make_record_request(context):
+def make_record_request(context, chat_id):
     req_dict = {'MEDORG_ID': COMPANY_ID,
                 'DOCT_ID': context.user_data['type'],
                 'BRA_ID': context.user_data['polyclinic'],
@@ -77,12 +97,13 @@ def make_record_request(context):
                 'timeInterval': '-'.join(context.user_data['time']),
                 'Name': ' '.join(context.user_data['name'][:2]),
                 'Phone': context.user_data['phone'],
+                'seoCode': f'telegram@{chat_id}',
                 'firstName': context.user_data['name'][1],
                 'middleName': context.user_data['name'][2],
                 'lastName': context.user_data['name'][0],
                 'birthday': reformat_date(context.user_data['age'])
                 }
-    res = intercept_request(request=f'{SERVER}/api/Web/recordTelegram', data=req_dict)
+    res = authorized_request(request=f'{SERVER}/api/Web/recordTelegram', data=req_dict)
     if res[0]:
         return res[1]
     else:

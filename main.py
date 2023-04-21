@@ -1,13 +1,18 @@
+import datetime
 import logging
 
 import requests
+import telegram
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ConversationHandler
 
 from data import BOT_TOKEN
-from data import COMPANY_NAME, COMPANY_ID, DOCTORS, DAY, TYPES, TIME, POLYCLINICS, SERVER
+from data import COMPANY_NAME, COMPANY_ID, DOCTORS, DAY, TYPES, TIME, POLYCLINICS, SERVER, INTERVAL, BEGINNING, FLAGS
 
-from secondary import reformat_date, make_cell_request, make_kb_list, make_record_request, request_token
+from answers import *
+
+from secondary import reformat_date, make_cell_request, make_kb_list, make_record_request, request_token, \
+    authorized_request, check_request
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.DEBUG
@@ -18,6 +23,7 @@ kb_syms = [['/start']]
 deny_syms = [['/cancel', 'Назад']]
 kb = ReplyKeyboardMarkup(kb_syms, one_time_keyboard=True, resize_keyboard=True)
 deny_kb = ReplyKeyboardMarkup(deny_syms, one_time_keyboard=True, resize_keyboard=True)
+reminder_kb = ReplyKeyboardMarkup([['Да', 'Нет']], one_time_keyboard=True, resize_keyboard=True)
 
 request_token()
 req = requests.get(f'{SERVER}/api/Web/allspec/{COMPANY_ID}').json()
@@ -30,6 +36,17 @@ types_kb = ReplyKeyboardMarkup(make_kb_list(TYPES[1], back_button=False), one_ti
 
 async def misunderstanding(update, context):
     answer = update.message.text
+    id = update.message.from_user.id
+    if id in FLAGS.keys():
+        if answer == 'Да' or answer == 'Нет':
+            if answer == 'Да':
+                await update.message.reply_text('Ждем вас завтра!')
+            if answer == 'Нет':
+                await update.message.reply_text('Запись отменена.')
+        else:
+            await update.message.reply_text('Я не понял Ваш ответ. '
+                                            '\nНаш оператор свяжется с Вами для уточнения информации.')
+
     if 'спасибо' in answer.lower():
         await update.message.reply_text('Всегда пожалуйста!', reply_markup=kb)
     else:
@@ -38,8 +55,7 @@ async def misunderstanding(update, context):
 
 
 async def begining(update, context):
-    await update.message.reply_html(f"""\tЗдравствуйте! Я - бот для записи на прием в компании {COMPANY_NAME}
-    \nВыберите нужого вам врача.""", reply_markup=types_kb)
+    await update.message.reply_html(speciality_question, reply_markup=types_kb)
     return 0
 
 
@@ -59,8 +75,11 @@ async def choose_polyclinic(update, context):  # 0
         POLYCLINICS = [[], []]
 
         req = requests.get(
-            f'{SERVER}/api/Web/clinic/{COMPANY_ID}/{context.user_data["type"]}').json()
-
+            f'{SERVER}/api/Web/clinic/{COMPANY_ID}/{context.user_data["type"]}')
+        if not check_request(req):
+            await update.message.reply_text(server_problems_answer)
+            return ConversationHandler.END
+        req = req.json()
         if len(req) == 0:
             await update.message.reply_text(
                 'Извините, на данный момент данная специальность недоступна ни в одной поликлинике.'
@@ -73,14 +92,10 @@ async def choose_polyclinic(update, context):  # 0
 
         plclnc = ReplyKeyboardMarkup(make_kb_list(POLYCLINICS[1]), one_time_keyboard=True, resize_keyboard=True)
 
-        await update.message.reply_text(
-            f"В какую поликлинику вы хотите записаться?"
-            f"\nДля отмены напишите /cancel или нажмите на клавиатуре."
-            f"\nЧтобы вернутся назад, введите Назад или нажмите на клавиатуре.", reply_markup=plclnc)
+        await update.message.reply_text(polyclinic_question, reply_markup=plclnc)
         return 1
     else:
-        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
-                                        reply_markup=types_kb)
+        await update.message.reply_text(missing_data_answer, reply_markup=types_kb)
         return 0
 
 
@@ -88,8 +103,7 @@ async def choose_doctor(update, context):  # 1
     polyclinic = update.message.text
 
     if update.message.text == 'Назад':
-        await update.message.reply_html(f"""\tЗдравствуйте! Я - бот для записи на прием в компании {COMPANY_NAME}
-            \nВыберите нужого вам врача.""", reply_markup=types_kb)
+        await update.message.reply_html(speciality_question, reply_markup=types_kb)
         del context.user_data['type']
         return 0
 
@@ -99,7 +113,11 @@ async def choose_doctor(update, context):  # 1
 
         req = requests.get(
             f'{SERVER}/api/Web/allmedicdesc/{COMPANY_ID}/{context.user_data["polyclinic"]}/'
-            f'{context.user_data["type"]}').json()
+            f'{context.user_data["type"]}')
+        if not check_request(req):
+            await update.message.reply_text(server_problems_answer)
+            return ConversationHandler.END
+        req = req.json()
 
         global DOCTORS
         DOCTORS = [[], []]
@@ -116,16 +134,11 @@ async def choose_doctor(update, context):  # 1
 
         doctor = ReplyKeyboardMarkup(make_kb_list(DOCTORS[1]), one_time_keyboard=True, resize_keyboard=True)
 
-        await update.message.reply_text(
-            f"Выберите врача, к которому желаете пойти."
-            f"\nДля отмены напишите /cancel или нажмите на клавиатуре."
-            f"\nЧтобы вернутся назад, введите Назад или нажмите на клавиатуре.",
-            reply_markup=doctor)
+        await update.message.reply_text(doctor_question, reply_markup=doctor)
         return 2
     else:
         plclnc = ReplyKeyboardMarkup(make_kb_list(POLYCLINICS[1]), one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
-                                        reply_markup=plclnc)
+        await update.message.reply_text(missing_data_answer, reply_markup=plclnc)
         return 1
 
 
@@ -134,10 +147,7 @@ async def choose_day(update, context):  # 2
 
     if update.message.text == 'Назад':
         plclnc = ReplyKeyboardMarkup(make_kb_list(POLYCLINICS[1]), one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(
-            f"В какую поликлинику вы хотите записаться?"
-            f"\nДля отмены напишите /cancel или нажмите на клавиатуре."
-            f"\nЧтобы вернутся назад, введите Назад или нажмите на клавиатуре.", reply_markup=plclnc)
+        await update.message.reply_text(polyclinic_question, reply_markup=plclnc)
         del context.user_data['polyclinic']
         return 1
 
@@ -148,7 +158,11 @@ async def choose_day(update, context):  # 2
         req_text = f'{SERVER}/api/Web/freedaysmedic/{COMPANY_ID}' \
                    f'/{context.user_data["type"]}/{context.user_data["polyclinic"]}/{context.user_data["doctor"]}'
 
-        req = requests.get(req_text).json()
+        req = requests.get(req_text)
+        if not check_request(req):
+            await update.message.reply_text(server_problems_answer)
+            return ConversationHandler.END
+        req = req.json()
 
         if len(req) == 0:
             await update.message.reply_text(
@@ -162,17 +176,12 @@ async def choose_day(update, context):  # 2
             DAY.append(reformat_date(i['FreeDay'].split('T')[0]))
         days = ReplyKeyboardMarkup(make_kb_list(DAY), one_time_keyboard=True, resize_keyboard=True)
 
-        await update.message.reply_text(
-            f"На какой день вы хотите записаться?"
-            f"\nДля отмены напишите /cancel или нажмите на клавиатуре."
-            f"\nЧтобы вернутся назад, введите Назад или нажмите на клавиатуре.",
-            reply_markup=days)
+        await update.message.reply_text(record_day_question, reply_markup=days)
         return 3
     else:
         dctr = ReplyKeyboardMarkup(make_kb_list(DOCTORS[1]), one_time_keyboard=True,
                                    resize_keyboard=True)
-        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
-                                        reply_markup=dctr)
+        await update.message.reply_text(missing_data_answer, reply_markup=dctr)
         return 2
 
 
@@ -181,11 +190,7 @@ async def choose_time(update, context):  # 3
 
     if update.message.text == 'Назад':
         doctor = ReplyKeyboardMarkup(make_kb_list(DOCTORS[1]), one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(
-            f"Выберите врача, к которому желаете пойти."
-            f"\nДля отмены напишите /cancel или нажмите на клавиатуре."
-            f"\nЧтобы вернутся назад, введите Назад или нажмите на клавиатуре.",
-            reply_markup=doctor)
+        await update.message.reply_text(doctor_question, reply_markup=doctor)
         del context.user_data['doctor']
         return 2
 
@@ -200,6 +205,9 @@ async def choose_time(update, context):  # 3
                                  context.user_data['type'],
                                  context.user_data['day'],
                                  context.user_data['day'])
+        if not TIME:
+            await update.message.reply_text(server_problems_answer)
+            return ConversationHandler.END
         if len(TIME[0]) == 0:
             await update.message.reply_text(
                 'Извините, на данный момент нет доступных ячеек для записи на выбранный день.'
@@ -207,15 +215,11 @@ async def choose_time(update, context):  # 3
             return ConversationHandler.END
 
         times = ReplyKeyboardMarkup(make_kb_list(TIME[0]), one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(f"На какое время вы хотите записаться?"
-                                        f"\nДля отмены напишите /cancel или нажмите на клавиатуре."
-                                        f"\nЧтобы вернутся назад, введите Назад или нажмите на клавиатуре.",
-                                        reply_markup=times)
+        await update.message.reply_text(record_time_question, reply_markup=times)
         return 4
     else:
         days = ReplyKeyboardMarkup(make_kb_list(DAY), one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
-                                        reply_markup=days)
+        await update.message.reply_text(missing_data_answer, reply_markup=days)
         return 3
 
 
@@ -224,25 +228,18 @@ async def take_surname(update, context):  # 4
 
     if update.message.text == 'Назад':
         days = ReplyKeyboardMarkup(make_kb_list(DAY), one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(
-            f"На какой день вы хотите записаться?"
-            f"\nДля отмены напишите /cancel или нажмите на клавиатуре."
-            f"\nЧтобы вернутся назад, введите Назад или нажмите на клавиатуре.",
-            reply_markup=days)
+        await update.message.reply_text(record_day_question, reply_markup=days)
         del context.user_data['day']
         return 3
 
     if time in TIME[0]:
         if context.user_data.get('time') is None:
             context.user_data['time'] = [time, TIME[1][TIME[0].index(time)]]
-        await update.message.reply_text(
-            f"Для того, чтобы записаться в нам нужно узнать Ваше ФИО."
-            f" \nВведите Вашу фамилию с прописной буквы.", reply_markup=deny_kb)
+        await update.message.reply_text(lastname_question, reply_markup=deny_kb)
         return 5
     else:
         times = ReplyKeyboardMarkup(make_kb_list(TIME[0]), one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
-                                        reply_markup=times)
+        await update.message.reply_text(missing_data_answer, reply_markup=times)
         return 4
 
 
@@ -251,17 +248,13 @@ async def take_name(update, context):  # 5
 
     if update.message.text == 'Назад':
         times = ReplyKeyboardMarkup(make_kb_list(TIME[0]), one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(f"На какое время вы хотите записаться?"
-                                        f"\nДля отмены напишите /cancel или нажмите на клавиатуре."
-                                        f"\nЧтобы вернутся назад, введите Назад или нажмите на клавиатуре.",
-                                        reply_markup=times)
+        await update.message.reply_text(record_time_question, reply_markup=times)
         del context.user_data['time']
         return 4
 
     if context.user_data.get('name') is None:
         context.user_data['name'] = [name]
-    await update.message.reply_text(
-        f" Введите Ваше имя с прописной буквы.", reply_markup=deny_kb)
+    await update.message.reply_text(firstname_question, reply_markup=deny_kb)
     return 6
 
 
@@ -269,16 +262,13 @@ async def take_lastname(update, context):  # 6
     name = update.message.text
 
     if update.message.text == 'Назад':
-        await update.message.reply_text(
-            f"Для того, чтобы записаться в нам нужно узнать Ваше ФИО."
-            f" \nВведите Вашу фамилию с прописной буквы.", reply_markup=deny_kb)
+        await update.message.reply_text(lastname_question, reply_markup=deny_kb)
         del context.user_data['name']
         return 5
 
     if context.user_data.get('name') is not None and len(context.user_data.get('name')) == 1:
         context.user_data['name'].append(name)
-    await update.message.reply_text(
-        f" Введите Ваше отчество с прописной буквы.", reply_markup=deny_kb)
+    await update.message.reply_text(middlename_question, reply_markup=deny_kb)
     return 7
 
 
@@ -286,16 +276,14 @@ async def take_age(update, context):  # 7
     name = update.message.text
 
     if update.message.text == 'Назад':
-        await update.message.reply_text(
-            f" Введите Ваше имя с прописной буквы.", reply_markup=deny_kb)
+        await update.message.reply_text(firstname_question, reply_markup=deny_kb)
         del context.user_data['name'][-1]
         return 6
 
     if context.user_data.get('name') is not None and len(context.user_data.get('name')) == 2:
         context.user_data['name'].append(name)
 
-    await update.message.reply_text(
-        f'Пожалуйста, укажите дату рождения в формате ДД.ММ.ГГГГ', reply_markup=deny_kb)
+    await update.message.reply_text(age_question, reply_markup=deny_kb)
     return 8
 
 
@@ -303,8 +291,7 @@ async def take_phone_number(update, context):  # 8
     age = update.message.text
 
     if update.message.text == 'Назад':
-        await update.message.reply_text(
-            f" Введите Ваше отчество с прописной буквы.", reply_markup=deny_kb)
+        await update.message.reply_text(middlename_question, reply_markup=deny_kb)
         del context.user_data['type'][-1]
         return 7
 
@@ -314,7 +301,7 @@ async def take_phone_number(update, context):  # 8
             await update.message.reply_text("Кажется, вы ввели что-то не так.")
             return 8
         context.user_data['age'] = age
-    await update.message.reply_text(f'Пожалуйста, укажите ваш номер телефона.', reply_markup=deny_kb)
+    await update.message.reply_text(phone_question, reply_markup=deny_kb)
     return 9
 
 
@@ -322,8 +309,7 @@ async def check_data(update, context):  # 9
     phone = update.message.text
 
     if update.message.text == 'Назад':
-        await update.message.reply_text(
-            f'Пожалуйста, укажите дату рождения в формате ДД.ММ.ГГГГ', reply_markup=deny_kb)
+        await update.message.reply_text(age_question, reply_markup=deny_kb)
         del context.user_data['age']
         return 8
 
@@ -356,16 +342,20 @@ async def end_of_dialog(update, context):  # 10
     answer = update.message.text
 
     if update.message.text == 'Назад':
-        await update.message.reply_text(f'Пожалуйста, укажите ваш номер телефона.', reply_markup=deny_kb)
+        await update.message.reply_text(phone_question, reply_markup=deny_kb)
         del context.user_data['phone']
         return 9
 
     if answer == 'Всё верно!':
-        req = make_record_request(context)
-        if req:
-            await update.message.reply_text(f'Вы записаны на {context.user_data["day"]}. Не опаздывайте, хорошего дня!'
-                                            f'\nДля возобновления работы напишите /start или нажмите /start на клавиатуре.',
-                                            reply_markup=kb)
+        req = make_record_request(context, update.message.chat_id)
+        confirmation_req = authorized_request(f'{SERVER}/api/Web/confirmationAmoCRM/{COMPANY_ID}/{req}',
+                                              data=None,
+                                              request_type='get')
+        if req and confirmation_req:
+            await update.message.reply_text(
+                f'Вы записаны на {reformat_date(context.user_data["day"])}. Не опаздывайте, хорошего дня!'
+                f'\nДля возобновления работы напишите /start или нажмите /start на клавиатуре.',
+                reply_markup=kb)
         else:
             await update.message.reply_text('Запись не удалась. Пожалуйста, повторите попытку позже.'
                                             f'\nДля возобновления работы напишите /start или нажмите /start на клавиатуре.',
@@ -377,9 +367,22 @@ async def end_of_dialog(update, context):  # 10
     else:
         choice = ReplyKeyboardMarkup(make_kb_list(['Всё верно!', 'Есть ошибки']), one_time_keyboard=True,
                                      resize_keyboard=True)
-        await update.message.reply_text('Такого нет в моих данных... \nНапишите ваш ответ еще раз.',
-                                        reply_markup=choice)
+        await update.message.reply_text(missing_data_answer, reply_markup=choice)
         return 10
+
+
+async def request_reminders(context):
+    req = authorized_request(request=f'{SERVER}/api/reception/ScheduledReceptionRecords/',
+                             data={'medorgId': COMPANY_ID,
+                                   'branchId': 0,
+                                   'date': str(datetime.date.today() + datetime.timedelta(days=1))},
+                             response_type='json')
+    for i in req[1]['scheduledReceptionRecords']:
+        await telegram.Bot(token=BOT_TOKEN).send_message(chat_id=int(i['seoCode'].split('@')[1]),
+                                                         text='Здравствуйте! Напоминаю о Вашей записи к врачу на завтрашний день.'
+                                                              '\nВы придете?', reply_markup=reminder_kb)
+    global FLAG
+    FLAG = True
 
 
 def main():
@@ -406,6 +409,7 @@ def main():
         fallbacks=[CommandHandler('cancel', cancellation)]
     )
 
+    application.job_queue.run_repeating(callback=request_reminders, interval=INTERVAL, first=BEGINNING)
     application.add_handler(conv_handler)
     application.add_handler(text_handler)
 
