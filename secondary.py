@@ -4,9 +4,11 @@ import telegram
 from data import SERVER, COMPANY_ID, ACCESS_TOKEN, PASSWORD, USER
 
 
-def make_kb_list(data, back_button=True, cancel_button=True):
+def make_kb_list(data, limit=2e32, back_button=True, cancel_button=True):
     answer = []
     for i in range(len(data)):
+        if i >= limit:
+            break
         if i % 3 == 0:
             answer.append([])
         answer[-1].append(data[i])
