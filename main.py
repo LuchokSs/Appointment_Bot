@@ -71,7 +71,7 @@ async def misunderstanding(update, context):
                 await update.message.reply_text('Я не понял Ваш ответ. Наш диспетчер свяжется с '
                                                 'Вами для уточнения информации.',
                                                 reply_markup=kb)
-
+                DEEP = 1
         return
 
     if 'спасибо' in answer.lower():
