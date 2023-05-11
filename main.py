@@ -12,7 +12,7 @@ from data import COMPANY_NAME, COMPANY_ID, DOCTORS, DAY, TYPES, TIME, POLYCLINIC
 from answers import *
 
 from secondary import reformat_date, make_cell_request, make_kb_list, make_record_request, request_token, \
-    authorized_request, check_request
+    authorized_request, check_request, check_age, check_phone
 
 DEEP = 1
 
@@ -37,6 +37,8 @@ request_token()
 
 
 async def misunderstanding(update, context):
+    """Функция обработки сообщений, не являющихся командами."""
+
     answer = update.message.text
     id = update.message.from_user.id
     if id in FLAGS.keys():
@@ -44,16 +46,16 @@ async def misunderstanding(update, context):
             if answer == 'Да':
                 if authorized_request(request=f'{SERVER}/api/reception/SetInternetRecordConfirmationState/',
                                       data={'medorgId': COMPANY_ID,
-                                            'internetEntryGUID': FLAGS[id]['internetEntryGUID'],
+                                            'internetEntryGUID': FLAGS[id][-1]['internetEntryGUID'],
                                             'confirmationState': 11},
                                       request_type='post',
                                       response_type='str'):
-                    await update.message.reply_text(f'Ждем Вас завтра по адресу {FLAGS[id]["branchAddress"]}!',
+                    await update.message.reply_text(f'Ждем Вас завтра по адресу {FLAGS[id][-1]["branchAddress"]}!',
                                                     reply_markup=kb)
             elif answer == 'Нет':
                 if authorized_request(request=f'{SERVER}/api/reception/SetInternetRecordConfirmationState/',
                                       data={'medorgId': COMPANY_ID,
-                                            'internetEntryGUID': FLAGS[id]['internetEntryGUID'],
+                                            'internetEntryGUID': FLAGS[id][-1]['internetEntryGUID'],
                                             'confirmationState': 12},
                                       request_type='post',
                                       response_type='str'):
@@ -67,11 +69,20 @@ async def misunderstanding(update, context):
                 await update.message.reply_text('Я не понял Ваш ответ. Выберите один из предложенных на панели.',
                                                 reply_markup=reminder_kb)
                 DEEP -= 1
+                return
             elif DEEP == 0:
                 await update.message.reply_text('Я не понял Ваш ответ. Наш диспетчер свяжется с '
                                                 'Вами для уточнения информации.',
                                                 reply_markup=kb)
                 DEEP = 1
+        if len(FLAGS[id]) == 1:
+            FLAGS.pop(id, None)
+        else:
+            FLAGS[id].pop()
+            await update.message.reply_text(text=f'Вы придете {reformat_date(FLAGS[id][-1]["date"].split("T")[0])} '
+                                                 f'в {FLAGS[id][-1]["time"]} к врачу {FLAGS[id][-1]["workerName"]} по '
+                                                 f'специальности {FLAGS[id][-1]["doctorName"]}?',
+                                            reply_markup=reminder_kb)
         return
 
     if 'спасибо' in answer.lower():
@@ -82,6 +93,8 @@ async def misunderstanding(update, context):
 
 
 async def beginning(update, context):
+    """Первый этап Conversation для заполнения заявки на запись."""
+
     context.user_data.clear()
     req = requests.get(f'{SERVER}/api/Web/allspec/{COMPANY_ID}').json()
 
@@ -98,6 +111,8 @@ async def beginning(update, context):
 
 
 async def cancellation(update, context):
+    """Функция обработки отмены диалога в процессе диалога."""
+
     await update.message.reply_text('До скорой встречи! \nНапишите "/start" для возобновления работы.', reply_markup=kb)
     context.user_data.clear()
     global IS_CONVERSATION
@@ -106,6 +121,9 @@ async def cancellation(update, context):
 
 
 async def choose_polyclinic(update, context):  # 0
+
+    """Этап диалога записи с выбором поликлиники для выбранной специальности."""
+
     global IS_CONVERSATION
     IS_CONVERSATION[update.message.from_user.id] = True
 
@@ -145,6 +163,9 @@ async def choose_polyclinic(update, context):  # 0
 
 
 async def choose_doctor(update, context):  # 1
+
+    """Этап диалога записи с выбором врача для выбранной специальности."""
+
     polyclinic = update.message.text
 
     if update.message.text == 'Назад':
@@ -190,6 +211,9 @@ async def choose_doctor(update, context):  # 1
 
 
 async def choose_day(update, context):  # 2
+
+    """Этап диалога записи с выбором дня записи."""
+
     doctor = update.message.text
 
     if update.message.text == 'Назад':
@@ -235,6 +259,9 @@ async def choose_day(update, context):  # 2
 
 
 async def choose_time(update, context):  # 3
+
+    """Этап диалога записи с выбором времени записи."""
+
     day = update.message.text
 
     if update.message.text == 'Назад':
@@ -284,7 +311,7 @@ async def take_surname(update, context):  # 4
     if time in TIME[0]:
         if context.user_data.get('time') is None:
             context.user_data['time'] = [time, TIME[1][TIME[0].index(time)]]
-        await update.message.reply_text(lastname_question, reply_markup=deny_kb)
+        await update.message.reply_text(firstname_question, reply_markup=deny_kb)
         return 5
     else:
         times = ReplyKeyboardMarkup(make_kb_list(TIME[0]), one_time_keyboard=True, resize_keyboard=True)
@@ -302,8 +329,8 @@ async def take_name(update, context):  # 5
         return 4
 
     if context.user_data.get('name') is None:
-        context.user_data['name'] = [name.capitalize()]
-    await update.message.reply_text(firstname_question, reply_markup=deny_kb)
+        context.user_data['name'] = [name.lower().capitalize()]
+    await update.message.reply_text(name_question, reply_markup=deny_kb)
     return 6
 
 
@@ -311,12 +338,12 @@ async def take_lastname(update, context):  # 6
     name = update.message.text
 
     if update.message.text == 'Назад':
-        await update.message.reply_text(lastname_question, reply_markup=deny_kb)
+        await update.message.reply_text(firstname_question, reply_markup=deny_kb)
         del context.user_data['name']
         return 5
 
     if context.user_data.get('name') is not None and len(context.user_data.get('name')) == 1:
-        context.user_data['name'].append(name.capitalize())
+        context.user_data['name'].append(name.lower().capitalize())
     await update.message.reply_text(middlename_question, reply_markup=middlename_kb)
     return 7
 
@@ -325,7 +352,7 @@ async def take_age(update, context):  # 7
     name = update.message.text
 
     if update.message.text == 'Назад':
-        await update.message.reply_text(firstname_question, reply_markup=deny_kb)
+        await update.message.reply_text(name_question, reply_markup=deny_kb)
         del context.user_data['name'][-1]
         return 6
 
@@ -333,7 +360,7 @@ async def take_age(update, context):  # 7
         if name == 'Нет отчества.':
             context.user_data['name'].append('')
         else:
-            context.user_data['name'].append(name.capitalize())
+            context.user_data['name'].append(name.lower().capitalize())
 
     await update.message.reply_text(age_question, reply_markup=deny_kb)
     return 8
@@ -344,13 +371,13 @@ async def take_phone_number(update, context):  # 8
 
     if update.message.text == 'Назад':
         await update.message.reply_text(middlename_question, reply_markup=middlename_kb)
-        del context.user_data['type'][-1]
+        del context.user_data['name'][-1]
         return 7
 
     if context.user_data.get('age') is None:
-        check = age.split('.')
-        if not (len(check[0]) == 2 and len(check[1]) == 2 and len(check[2]) == 4):
-            await update.message.reply_text("Кажется, вы ввели что-то не так.")
+        if not check_age(age):
+            await update.message.reply_text("Кажется, Вы ввели что-то не так."
+                                            "\nПожалуйста, введите дату рождения в формате ДД.ММ.ГГГГ")
             return 8
         context.user_data['age'] = age
     await update.message.reply_text(phone_question, reply_markup=deny_kb)
@@ -366,7 +393,15 @@ async def check_data(update, context):  # 9
         return 8
 
     if context.user_data.get('phone') is None:
-        context.user_data['phone'] = phone
+        res = check_phone(phone)
+        if res:
+            context.user_data['phone'] = res
+        else:
+            await update.message.reply_text("Кажется, Вы ввели что-то не так. "
+                                            "Пожалуйста, введите Ваш номер телефона без кода страны. "
+                                            "Пример: 9505908070.",
+                                            reply_markup=deny_kb)
+            return 9
     choice = ReplyKeyboardMarkup(make_kb_list(['Всё верно!', 'Есть ошибки']), one_time_keyboard=True,
                                  resize_keyboard=True)
     await update.message.reply_text(
@@ -383,8 +418,8 @@ async def check_data(update, context):  # 9
         f"Вы записываетесь в {data['polyclinic']} по специальности "
         f"{data['type'].lower()} к врачу {data['doctor']} на "
         f"{data['day']} в {data['time']}.\n"
-        f"Ваш номер телефона: {data['phone']}\n"
-        f"Дата вашего рождения: {data['age']}\n"
+        f"Ваш номер телефона: 8{data['phone']}\n"
+        f"Дата Вашего рождения: {data['age']}\n"
         f"Ваше ФИО: {data['name']}")
     await update.message.reply_text(f"Всё верно?", reply_markup=choice)
     return 10
@@ -413,12 +448,14 @@ async def end_of_dialog(update, context):  # 10
             await update.message.reply_text('Запись не удалась. Пожалуйста, повторите попытку позже.'
                                             f'\nДля возобновления работы нажмите /start на клавиатуре.',
                                             reply_markup=kb)
-        IS_CONVERSATION.pop(update.message.from_user.id)
+        IS_CONVERSATION.pop(update.message.from_user.id, None)
         return ConversationHandler.END
     elif answer == 'Есть ошибки':
-        await update.message.reply_text(f'Пожалуйста, заполните Вашу заявку заново.', reply_markup=kb)
-        IS_CONVERSATION.pop(update.message.from_user.id)
-        return ConversationHandler.END
+        await update.message.reply_text(firstname_question, reply_markup=deny_kb)
+        context.user_data.pop('phone')
+        context.user_data.pop('age')
+        context.user_data.pop('name')
+        return 5
     else:
         choice = ReplyKeyboardMarkup(make_kb_list(['Всё верно!', 'Есть ошибки']), one_time_keyboard=True,
                                      resize_keyboard=True)
@@ -435,15 +472,33 @@ async def request_reminders(context):
                              response_type='json')
     for i in req[1]['scheduledReceptionRecords']:
         if not IS_CONVERSATION.get(int(i['seoCode'].split('@')[1]), False):
+            if int(i['seoCode'].split('@')[1]) in FLAGS.keys():
+                FLAGS[int(i['seoCode'].split('@')[1])].append(i)
+            else:
+                FLAGS[int(i['seoCode'].split('@')[1])] = [i]
+
+    for g in FLAGS.keys():
+        if len(FLAGS[g]) != 1:
+            text = 'Здравствуйте! Напоминаю о Ваших записях:\n'
+            for i in FLAGS[g]:
+                text += f'Запись на {reformat_date(i["date"].split("T")[0])} в {i["time"]}' \
+                        f' к врачу {i["workerName"]} по специальности {i["doctorName"]}.\n'
+        else:
+            i = FLAGS[g][0]
             text = f'Здравствуйте! Напоминаю о Вашей записи на {reformat_date(i["date"].split("T")[0])} в {i["time"]}' \
-                   f' к врачу {i["workerName"]} по специальности {i["doctorName"]}.\nВы придете?'
-            await telegram.Bot(token=BOT_TOKEN).send_message(chat_id=int(i['seoCode'].split('@')[1]),
-                                                             text=text, reply_markup=reminder_kb)
-            FLAGS[int(i['seoCode'].split('@')[1])] = i
+                   f' к врачу {i["workerName"]} по специальности {i["doctorName"]}.'
+        i = FLAGS[g][-1]
+        await telegram.Bot(token=BOT_TOKEN).send_message(chat_id=g, text=text)
+        await telegram.Bot(token=BOT_TOKEN).send_message(chat_id=g,
+                                                         text=f'Вы придете {reformat_date(i["date"].split("T")[0])} '
+                                                              f'в {i["time"]} к врачу {i["workerName"]} по '
+                                                              f'специальности {i["doctorName"]}?',
+                                                         reply_markup=reminder_kb)
 
 
 async def timeout(update, context):
-    IS_CONVERSATION.pop(update.message.from_user.id)
+    IS_CONVERSATION.pop(update.message.from_user.id, None)
+    context.user_data.clear()
     await update.message.reply_text("Вы превысили время ожидания ответа. Заполнение заявки отменено. "
                                     "Для заполнения новой заявки нажмите /start", reply_markup=kb)
 

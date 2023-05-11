@@ -1,7 +1,31 @@
+import datetime
+
 import requests
 import telegram
 
 from data import SERVER, COMPANY_ID, ACCESS_TOKEN, PASSWORD, USER
+
+
+def check_age(age):
+    try:
+        age = datetime.datetime.strptime(reformat_date(age) + " 00:00:00", '%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        return False
+    except IndexError:
+        return False
+    if age > datetime.datetime.now():
+        return False
+    if datetime.datetime.now().year - age.year >= 100:
+        return False
+    return True
+
+
+def check_phone(phone):
+    if not phone.isdigit():
+        return False
+    if len(phone) != 10:
+        return False
+    return phone
 
 
 def make_kb_list(data, limit=2e32, back_button=True, cancel_button=True):
@@ -72,22 +96,22 @@ def request_token():
     return
 
 
-def authorized_request(request, data, request_type='post', deep=5, response_type='str'):
+def authorized_request(request, data, request_type='post', deep=2, response_type='str'):
     req = []
     if deep == 0:
-        return False
+        return False, None
     if request_type == 'post':
         req = requests.post(request, data=data, headers={'Authorization': f'Bearer {ACCESS_TOKEN}'})
     elif request_type == 'get':
         req = requests.get(request, headers={'Authorization': f'Bearer {ACCESS_TOKEN}'})
-    if check_request(req) and req.content != -1 and req.content != 0:
+    if check_request(req) and req.text != "-1" and req.text != "0":
         if response_type == 'str':
             return True, req.text
         if response_type == 'json':
             return True, req.json()
     else:
         request_token()
-        return authorized_request(request, data, deep=deep - 1)
+        return authorized_request(request=request, data=data, deep=deep - 1)
 
 
 def make_record_request(context, chat_id):
