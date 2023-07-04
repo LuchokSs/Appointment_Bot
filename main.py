@@ -6,8 +6,7 @@ import telegram
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ConversationHandler
 
-from data import BOT_TOKEN, CELL_NUMBER_LIMIT, IS_CONVERSATION, COVERSATION_TIMEOUT
-from data import COMPANY_NAME, COMPANY_ID, DOCTORS, DAY, TYPES, TIME, POLYCLINICS, SERVER, INTERVAL, BEGINNING, FLAGS
+from data import BEGINNING
 
 from answers import *
 
@@ -15,14 +14,6 @@ from secondary import reformat_date, make_cell_request, make_kb_list, make_recor
     authorized_request, check_request, check_age, check_phone
 
 DEEP = 1
-
-logging.basicConfig(
-    filename='logs.txt',
-    filemode='a',
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.ERROR
-)
-logger = logging.getLogger(__name__)
 
 kb_syms = [['/start']]
 deny_syms = [['/cancel', 'Назад']]
@@ -503,7 +494,23 @@ async def timeout(update, context):
                                     "Для заполнения новой заявки нажмите /start", reply_markup=kb)
 
 
-def main():
+def main(telegram_token='6238823064:AAHqSFDUaFbJ6WXBI1bNay5HZdSOjeFJRQw',
+         company_name="TESTMED",
+         company_id=1,
+         server='https://patient.simplex48.ru',
+         reminder_interval=60 * 60 * 1,
+         conversation_timeout=60 * 15 * 1,
+         cell_number_limit=21
+         ):
+    global BOT_TOKEN, COMPANY_NAME, COMPANY_ID, SERVER, INTERVAL, CONVERSATION_TIMEOUT, CELL_NUMBER_LIMIT
+    BOT_TOKEN = telegram_token
+    COMPANY_NAME = company_name
+    COMPANY_ID = company_id
+    SERVER = server
+    INTERVAL = reminder_interval
+    CONVERSATION_TIMEOUT = conversation_timeout
+    CELL_NUMBER_LIMIT = cell_number_limit
+
     application = Application.builder().token(BOT_TOKEN).build()
     text_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, misunderstanding)
 
@@ -526,14 +533,15 @@ def main():
         },
 
         fallbacks=[CommandHandler('cancel', cancellation)],
-        conversation_timeout=COVERSATION_TIMEOUT,
+        conversation_timeout=CONVERSATION_TIMEOUT,
     )
 
     application.job_queue.run_repeating(callback=request_reminders, interval=INTERVAL, first=BEGINNING)
     application.add_handler(conv_handler)
     application.add_handler(text_handler)
 
-    application.run_polling()
+    return application
 
 
-main()
+if __name__ == '__main__':
+    main('6238823064:AAHqSFDUaFbJ6WXBI1bNay5HZdSOjeFJRQw').run_polling()
